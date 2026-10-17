@@ -1,0 +1,55 @@
+# Checks every push and pull request the way Home Assistant and HACS will.
+#
+# hassfest is Home Assistant's own manifest and translation validator; the HACS action checks what HACS
+# requires of a repository before it can be added. Both run against the tree as committed.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hassfest:
+    name: hassfest
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # home-assistant/actions publishes no maintained release tags; pinned to master as of 2026-10-17.
+      - uses: home-assistant/actions/hassfest@cd6f3635a740c84d8a14f6121a90068b8ece6bf6 # master, 2026-10-17
+
+  hacs:
+    name: HACS validation
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hacs/action@d556e736723344f83838d08488c983a15381059a # 22.5.0
+        with:
+          category: integration
+          # No icon has been submitted to home-assistant/brands; the integration works without one.
+          ignore: brands
+
+  python:
+    name: Python compiles
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      # Byte-compiling catches syntax errors without installing Home Assistant.
+      - run: python -m compileall -q custom_components scripts

@@ -1,0 +1,32 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "title": "Choose a Jackery Navi 2000",
+        "description": "These Navis are currently heard by a Bluetooth adapter or ESPHome Bluetooth proxy.",
+        "data": {
+          "address": "Device"
+        }
+      },
+      "manual": {
+        "title": "Enter the Bluetooth address",
+        "description": "No Navi is currently heard by any adapter or proxy, or you chose to enter one. The address looks like 74:4D:BD:00:00:00, and the device must be in range of an adapter or proxy now.",
+        "data": {
+          "address": "Bluetooth address"
+        }
+      },
+      "bluetooth_confirm": {
+        "description": "Set up {name} ({address})?"
+      }
+    },
+    "error": {
+      "not_in_range": "No connectable Bluetooth adapter or proxy hears that address right now.",
+      "not_jackery": "That device does not advertise a Jackery name."
+    },
+    "abort": {
+      "already_configured": "This Navi is already configured.",
+      "not_supported": "This device is not a Jackery Navi 2000."
+    }
+  }
+}

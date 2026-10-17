@@ -1,0 +1,103 @@
+# Publish a release from a version tag.
+#
+# Nothing is published until the tag has been shown to agree with manifest.json. The archive is the one
+# `make` builds locally: custom_components/jackery_navi/ owned by 0:0, so it unpacks in place under /config.
+# HACS does not need it; it installs from the tagged tree.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: GitHub Release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Full history and every tag: the archive name counts commits since the tag, and the notes span
+          # from the previous release.
+          fetch-depth: 0
+
+      - name: The tag must agree with manifest.json
+        run: |
+          set -euo pipefail
+          manifest=$(python3 -c 'import json; print(json.load(open("custom_components/jackery_navi/manifest.json"))["version"])')
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$manifest" != "$tag" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match manifest.json version $manifest"
+            exit 1
+          fi
+
+      - name: Build the archive
+        run: |
+          set -euo pipefail
+          make
+          ls -l dist
+
+      # Notes from commit subjects rather than from GitHub's generator, which lists merged pull requests
+      # and would be empty for a release built from direct commits.
+      - name: Notes
+        run: |
+          set -euo pipefail
+          previous=$(git tag --list 'v*' --sort=-v:refname \
+                       | grep -v -- '-' \
+                       | grep -v "^${GITHUB_REF_NAME}$" \
+                       | head -1 || true)
+          subjects() { git log --no-merges --reverse --pretty='- %s' "$@" | grep -v '^- Release [0-9]'; }
+          {
+            if [ -n "$previous" ]; then
+              echo "## Changes since ${previous}"
+              echo
+              subjects "${previous}..${GITHUB_REF_NAME}"
+              echo
+              echo "**Full changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${previous}...${GITHUB_REF_NAME}"
+            else
+              echo "## Changes"
+              echo
+              subjects "${GITHUB_REF_NAME}"
+            fi
+            echo
+            echo "Install with HACS, or unpack the archive into the Home Assistant configuration directory:"
+            echo "\`tar -xzf jackery_navi-*.tar.gz -C /config\`. Verify with \`sha256sum -c SHA256SUMS\`."
+          } > dist/NOTES.md
+          cat dist/NOTES.md
+
+      - name: Checksums
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          sha256sum jackery_navi-*.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Attest the archive
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/jackery_navi-*.tar.gz
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          prerelease=""
+          case "$GITHUB_REF_NAME" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file dist/NOTES.md \
+            $prerelease \
+            dist/jackery_navi-*.tar.gz dist/SHA256SUMS
